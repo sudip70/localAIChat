@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Gemma Local AI</title>
+  <meta
+    name="description"
+    content="A local-first chat interface for Ollama and Gemma with conversation memory, text attachments, and a polished single-page UI."
+  >
+  <script>
+    try {
+      const savedTheme = localStorage.getItem("gemma_theme");
+      if (savedTheme === "dark" || savedTheme === "light") {
+        document.documentElement.dataset.theme = savedTheme;
+      }
+    } catch (error) {
+      // Ignore storage access failures and fall back to the default theme.
+    }
+  </script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link
+    href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap"
+    rel="stylesheet"
+  >
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+  <div class="app-shell" id="appShell">
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-mobile-bar">
+        <button class="icon-toggle sidebar-close" id="sidebarCloseBtn" type="button" aria-label="Close sidebar" title="Close sidebar">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M6 6 18 18M18 6 6 18"></path>
+          </svg>
+        </button>
+      </div>
+      <div class="sidebar-header">
+        <div class="brand-lockup">
+          <div class="brand-mark" id="brandMark">G</div>
+          <div>
+            <p class="eyebrow">Local-first AI</p>
+            <h1 id="workspaceTitle">Gemma Workspace</h1>
+          </div>
+        </div>
+        <p class="sidebar-copy" id="sidebarCopy">
+          A lightweight chat UI for a Gemma model running through Ollama completely locally.
+        </p>
+        <button class="primary-button" id="newChatBtn" type="button">New conversation</button>
+      </div>
+
+      <section class="sidebar-section">
+        <label class="field-label" for="searchInput">Search conversations</label>
+        <input id="searchInput" class="search-input" type="text" placeholder="Find a conversation">
+      </section>
+
+      <section class="sidebar-section sidebar-section--grow">
+        <div class="section-heading">
+          <span>History</span>
+          <span id="conversationCount">0 chats</span>
+        </div>
+        <div id="conversationList" class="conversation-list"></div>
+      </section>
+
+      <section class="sidebar-section sidebar-note">
+        <p>Supports text-based attachments only: code, markdown, JSON, CSV, HTML, CSS, and config files.</p>
+        <button
+          class="settings-launch"
+          id="settingsToggleBtn"
+          type="button"
+          aria-expanded="false"
+          aria-controls="settingsOverlay"
+        >
+          <span class="settings-launch-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24">
+              <path d="M12 8.75A3.25 3.25 0 1 0 12 15.25A3.25 3.25 0 1 0 12 8.75Z"></path>
+              <path d="M19.4 15a1 1 0 0 0 .2 1.1l.05.05a1.7 1.7 0 0 1 0 2.4l-.2.2a1.7 1.7 0 0 1-2.4 0l-.05-.05a1 1 0 0 0-1.1-.2 1 1 0 0 0-.6.9V20a1.7 1.7 0 0 1-1.7 1.7h-.3A1.7 1.7 0 0 1 11.6 20v-.1a1 1 0 0 0-.6-.9 1 1 0 0 0-1.1.2l-.05.05a1.7 1.7 0 0 1-2.4 0l-.2-.2a1.7 1.7 0 0 1 0-2.4l.05-.05a1 1 0 0 0 .2-1.1 1 1 0 0 0-.9-.6H4A1.7 1.7 0 0 1 2.3 13v-.3A1.7 1.7 0 0 1 4 11h.1a1 1 0 0 0 .9-.6 1 1 0 0 0-.2-1.1l-.05-.05a1.7 1.7 0 0 1 0-2.4l.2-.2a1.7 1.7 0 0 1 2.4 0l.05.05a1 1 0 0 0 1.1.2 1 1 0 0 0 .6-.9V4A1.7 1.7 0 0 1 10.8 2.3h.3A1.7 1.7 0 0 1 12.8 4v.1a1 1 0 0 0 .6.9 1 1 0 0 0 1.1-.2l.05-.05a1.7 1.7 0 0 1 2.4 0l.2.2a1.7 1.7 0 0 1 0 2.4l-.05.05a1 1 0 0 0-.2 1.1 1 1 0 0 0 .9.6H20a1.7 1.7 0 0 1 1.7 1.7v.3A1.7 1.7 0 0 1 20 15h-.1a1 1 0 0 0-.9.6Z"></path>
+            </svg>
+          </span>
+          <span class="settings-launch-copy">
+            <span class="settings-launch-title">Settings</span>
+            <span class="settings-launch-meta" id="modelDisplayLabel">Model name: Gemma</span>
+          </span>
+        </button>
+      </section>
+    </aside>
+    <button class="sidebar-backdrop" id="sidebarBackdrop" type="button" aria-label="Close sidebar" tabindex="-1"></button>
+
+    <main class="main-panel">
+      <div class="utility-row">
+        <button
+          class="icon-toggle mobile-menu-toggle"
+          id="sidebarToggleBtn"
+          type="button"
+          aria-label="Open sidebar"
+          aria-controls="sidebar"
+          aria-expanded="false"
+          title="Open sidebar"
+        >
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M4 7h16M4 12h16M4 17h16"></path>
+          </svg>
+        </button>
+        <div class="utility-actions">
+          <span class="status-pill" id="statusPill">Checking local model…</span>
+          <button class="icon-toggle" id="themeToggle" type="button" aria-label="Switch theme" title="Switch theme">
+            <svg class="icon-sun" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M12 4V2M12 22v-2M4.93 4.93 3.52 3.52M20.48 20.48l-1.41-1.41M4 12H2M22 12h-2M4.93 19.07l-1.41 1.41M20.48 3.52l-1.41 1.41M12 17a5 5 0 1 0 0-10 5 5 0 0 0 0 10Z" />
+            </svg>
+            <svg class="icon-moon" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M21 12.79A9 9 0 1 1 11.21 3c-.01.2-.01.39-.01.59A7.5 7.5 0 0 0 20.41 12c.2 0 .39 0 .59-.01Z" />
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      <div class="chat-shell">
+        <header class="topbar">
+          <div class="title-block">
+            <div class="title-row">
+              <input
+                class="title-input"
+                id="chatTitleInput"
+                type="text"
+                value="New conversation"
+                maxlength="120"
+                aria-label="Conversation title"
+              >
+              <button class="secondary-button secondary-button--danger" id="clearBtn" type="button">Clear</button>
+            </div>
+          </div>
+        </header>
+
+        <section id="messageSurface" class="message-surface" aria-live="polite">
+          <div id="emptyState" class="empty-state">
+            <div class="empty-mark">G</div>
+            <h3>Start a local conversation</h3>
+            <p>
+              Ask a question, paste a bug, or attach a text file for local context. Your chat history stays in the browser.
+            </p>
+            <div class="suggestion-grid">
+              <button class="suggestion-card" data-suggestion="Explain how transformers work in simple terms" type="button">
+                <strong>Explain a concept</strong>
+                <span>Use the model like a technical tutor.</span>
+              </button>
+              <button class="suggestion-card" data-suggestion="Write a Python script that summarizes a CSV file" type="button">
+                <strong>Write code</strong>
+                <span>Generate a script or debugging help.</span>
+              </button>
+              <button class="suggestion-card" data-suggestion="Compare REST and GraphQL for an internal dashboard" type="button">
+                <strong>Compare tradeoffs</strong>
+                <span>Ask for architecture guidance.</span>
+              </button>
+              <button class="suggestion-card" data-suggestion="Review this code and tell me the main risks:\n\n" type="button">
+                <strong>Review code</strong>
+                <span>Attach files or paste snippets for feedback.</span>
+              </button>
+            </div>
+          </div>
+        </section>
+
+        <footer class="composer-panel">
+          <div class="context-row">
+            <span class="context-pill" id="contextPill">0 messages in context</span>
+            <span class="helper-copy" id="helperCopy">Text attachments only. Large chats are trimmed before sending.</span>
+          </div>
+
+          <div class="attachment-strip" id="attachmentStrip"></div>
+
+          <div class="composer">
+            <label class="icon-button" for="fileInput" title="Attach files">
+              +
+            </label>
+            <input
+              id="fileInput"
+              type="file"
+              multiple
+              accept=".txt,.md,.py,.js,.ts,.tsx,.json,.csv,.xml,.html,.css,.yml,.yaml,.ini,.toml"
+            >
+            <textarea
+              id="promptInput"
+              rows="2"
+              placeholder="Message Gemma locally…"
+            ></textarea>
+            <button class="send-button" id="sendBtn" type="button">Send</button>
+          </div>
+
+          <div class="composer-hint">
+            <span><kbd>Enter</kbd> send</span>
+            <span><kbd>Shift</kbd> + <kbd>Enter</kbd> newline</span>
+          </div>
+        </footer>
+      </div>
+    </main>
+  </div>
+
+  <div class="settings-overlay" id="settingsOverlay" hidden>
+    <div class="settings-popover" id="settingsPopover" role="dialog" aria-modal="true" aria-labelledby="settingsTitle">
+      <div class="settings-popover-head">
+        <div>
+          <p class="eyebrow">Preferences</p>
+          <h3 id="settingsTitle">Settings</h3>
+        </div>
+        <button class="icon-toggle settings-close" id="settingsCloseBtn" type="button" aria-label="Close settings" title="Close settings">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M6 6 18 18M18 6 6 18"></path>
+          </svg>
+        </button>
+      </div>
+      <div class="settings-popover-body">
+        <label class="field-label" for="modelNameInput">Model Name</label>
+        <input
+          id="modelNameInput"
+          class="search-input settings-input"
+          type="text"
+          maxlength="40"
+          placeholder="Gemma"
+        >
+        <p class="settings-hint">This changes the UI label only.</p>
+      </div>
+      <div class="settings-actions">
+        <button class="secondary-button" id="resetSettingsBtn" type="button">Reset</button>
+        <button class="primary-button settings-save" id="saveSettingsBtn" type="button">Save</button>
+      </div>
+      <button class="secondary-button secondary-button--danger settings-clear-history" id="clearHistoryBtn" type="button">
+        Clear Chat history
+      </button>
+    </div>
+  </div>
+
+  <script src="/static/app.js" defer></script>
+</body>
+</html>
