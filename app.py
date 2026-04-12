@@ -38,10 +38,18 @@ def health() -> dict[str, str]:
     try:
         response = requests.get(OLLAMA_TAGS_URL, timeout=3)
         response.raise_for_status()
-    except requests.RequestException:
+        data = response.json()
+    except (requests.RequestException, ValueError):
         return {"status": "offline", "model": OLLAMA_MODEL}
 
-    return {"status": "online", "model": OLLAMA_MODEL}
+    models = data.get("models", [])
+    has_model = any(
+        isinstance(model, dict)
+        and (model.get("name") == OLLAMA_MODEL or model.get("model") == OLLAMA_MODEL)
+        for model in models
+    )
+
+    return {"status": "online" if has_model else "offline", "model": OLLAMA_MODEL}
 
 
 @app.post("/api/generate")

@@ -29,7 +29,6 @@ const state = {
   busy: false,
   modelDisplayName: "Gemma",
   statusMode: "checking",
-  runtimeModelTag: "",
 };
 
 const elements = {
@@ -42,6 +41,7 @@ const elements = {
   contextPill: document.getElementById("contextPill"),
   conversationCount: document.getElementById("conversationCount"),
   conversationList: document.getElementById("conversationList"),
+  emptyMark: document.getElementById("emptyMark"),
   emptyState: document.getElementById("emptyState"),
   fileInput: document.getElementById("fileInput"),
   helperCopy: document.getElementById("helperCopy"),
@@ -53,7 +53,6 @@ const elements = {
   resetSettingsBtn: document.getElementById("resetSettingsBtn"),
   saveSettingsBtn: document.getElementById("saveSettingsBtn"),
   searchInput: document.getElementById("searchInput"),
-  sidebar: document.getElementById("sidebar"),
   sidebarBackdrop: document.getElementById("sidebarBackdrop"),
   sidebarCloseBtn: document.getElementById("sidebarCloseBtn"),
   sidebarToggleBtn: document.getElementById("sidebarToggleBtn"),
@@ -217,12 +216,13 @@ function buildStatusLabel(mode) {
 function applyModelDisplayName() {
   const assistantName = getAssistantName();
   elements.brandMark.textContent = getAssistantInitial();
+  elements.emptyMark.textContent = getAssistantInitial();
   elements.workspaceTitle.textContent = `${assistantName} Workspace`;
   elements.sidebarCopy.textContent = `A lightweight chat UI for a ${assistantName} model running through Ollama completely locally.`;
   elements.promptInput.placeholder = `Message ${assistantName} locally…`;
   elements.modelDisplayLabel.textContent = `Model name: ${assistantName}`;
   elements.modelNameInput.value = assistantName;
-  setStatus(state.statusMode, state.runtimeModelTag);
+  setStatus(state.statusMode);
 
   const conversation = getActiveConversation();
   if (conversation) {
@@ -283,6 +283,10 @@ function syncViewportLayout() {
     "aria-expanded",
     elements.appShell.classList.contains("is-sidebar-collapsed") ? "false" : "true",
   );
+}
+
+function warnBusy(actionLabel) {
+  setHelperCopy(`Wait for the current response to finish before ${actionLabel}.`);
 }
 
 function saveModelSettings() {
@@ -369,7 +373,11 @@ function hydrate() {
 }
 
 function persist() {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(state.conversations));
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state.conversations));
+  } catch {
+    setHelperCopy("Could not save conversation history in browser storage.");
+  }
 }
 
 function makeConversation() {
@@ -388,6 +396,11 @@ function getActiveConversation() {
 }
 
 function createConversation() {
+  if (state.busy) {
+    warnBusy("starting a new conversation");
+    return;
+  }
+
   const conversation = makeConversation();
   state.conversations.unshift(conversation);
   state.activeId = conversation.id;
@@ -414,6 +427,11 @@ function commitConversationTitle() {
 }
 
 function clearConversation() {
+  if (state.busy) {
+    warnBusy("clearing this conversation");
+    return;
+  }
+
   const conversation = getActiveConversation();
   if (!conversation) {
     return;
@@ -429,7 +447,7 @@ function clearConversation() {
 
 function clearHistory() {
   if (state.busy) {
-    setHelperCopy("Wait for the current response to finish before clearing history.");
+    warnBusy("clearing history");
     return;
   }
 
@@ -449,6 +467,11 @@ function clearHistory() {
 }
 
 function deleteConversation(id) {
+  if (state.busy) {
+    warnBusy("deleting a conversation");
+    return;
+  }
+
   state.conversations = state.conversations.filter(conversation => conversation.id !== id);
   if (!state.conversations.length) {
     state.conversations.push(makeConversation());
@@ -532,10 +555,24 @@ function renderConversationList(filter = "") {
       `;
 
       const openButton = item.querySelector(".conversation-open");
-      openButton.addEventListener("click", () => loadConversation(conversation.id));
+      openButton.disabled = state.busy;
+      openButton.addEventListener("click", () => {
+        if (state.busy) {
+          warnBusy("switching conversations");
+          return;
+        }
+
+        loadConversation(conversation.id);
+      });
 
       const deleteButton = item.querySelector(".conversation-delete");
+      deleteButton.disabled = state.busy;
       deleteButton.addEventListener("click", () => {
+        if (state.busy) {
+          warnBusy("deleting a conversation");
+          return;
+        }
+
         deleteConversation(conversation.id);
       });
 
@@ -833,9 +870,13 @@ async function sendMessage() {
       body: JSON.stringify(payload),
     });
 
-    const data = await response.json();
+    const data = await parseApiJson(response);
     if (!response.ok) {
-      throw new Error(data.detail || "The backend request failed.");
+      throw new Error(data.detail || `The backend request failed (${response.status}).`);
+    }
+
+    if (!data.response || typeof data.response !== "string") {
+      throw new Error("The backend returned an invalid response payload.");
     }
 
     const assistantMessage = {
@@ -849,7 +890,7 @@ async function sendMessage() {
     conversation.updatedAt = Date.now();
     persist();
     loadConversation(conversation.id);
-    setStatus("online", data.model || "");
+    setStatus("online");
     setHelperCopy("Response generated successfully.");
   } catch (error) {
     conversation.messages.push({
@@ -862,7 +903,7 @@ async function sendMessage() {
     persist();
     loadConversation(conversation.id);
     setStatus("offline");
-    setHelperCopy("The backend could not reach Ollama.");
+    setHelperCopy(error.message || "The request failed.");
   } finally {
     typingCard.remove();
     setBusy(false);
@@ -901,6 +942,28 @@ function appendTypingCard() {
   return card;
 }
 
+async function parseApiJson(response) {
+  const rawBody = await response.text();
+
+  if (!rawBody.trim()) {
+    if (response.ok) {
+      throw new Error("The backend returned an empty response.");
+    }
+
+    return {};
+  }
+
+  try {
+    return JSON.parse(rawBody);
+  } catch {
+    if (response.ok) {
+      throw new Error("The backend returned a non-JSON response.");
+    }
+
+    throw new Error(`The backend request failed (${response.status}).`);
+  }
+}
+
 async function readTextAttachment(file) {
   const text = await file.text();
   return `File: ${file.name}\n\`\`\`\n${text}\n\`\`\``;
@@ -932,6 +995,10 @@ function buildConversationTitle(text) {
 function setBusy(busy) {
   state.busy = busy;
   elements.sendBtn.disabled = busy;
+  elements.newChatBtn.disabled = busy;
+  elements.clearBtn.disabled = busy;
+  elements.clearHistoryBtn.disabled = busy;
+  renderConversationList(elements.searchInput.value);
 }
 
 function updateContextPill(count) {
@@ -942,11 +1009,8 @@ function setHelperCopy(message) {
   elements.helperCopy.textContent = message;
 }
 
-function setStatus(mode, runtimeModelTag = "") {
+function setStatus(mode) {
   state.statusMode = mode;
-  if (runtimeModelTag) {
-    state.runtimeModelTag = runtimeModelTag;
-  }
 
   elements.statusPill.textContent = buildStatusLabel(mode);
   elements.statusPill.classList.toggle("is-online", mode === "online");
@@ -956,11 +1020,9 @@ function setStatus(mode, runtimeModelTag = "") {
 async function pingHealth() {
   try {
     const response = await fetch(`${API_BASE}/health`, { method: "GET" });
-    const data = await response.json();
-    if (data.status === "online") {
-      setStatus("online", data.model || "");
-      return;
-    }
+    const data = await parseApiJson(response);
+    setStatus(data.status === "online" ? "online" : "offline");
+    return;
   } catch {
     // Ignore and mark offline below.
   }
