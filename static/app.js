@@ -3,8 +3,10 @@ const STORAGE_KEY = "gemma_portfolio_v1";
 const THEME_STORAGE_KEY = "gemma_theme";
 const MODEL_NAME_STORAGE_KEY = "gemma_model_display_name";
 const MAX_CONTEXT_MESSAGES = 12;
-const MAX_FILE_SIZE_BYTES = 200_000;
-const SUPPORTED_EXTENSIONS = new Set([
+const MAX_TEXT_FILE_SIZE_BYTES = 200_000;
+const MAX_IMAGE_SIZE_BYTES = 5_000_000;
+const DEFAULT_HELPER_COPY = "Text files and images only. Large chats are trimmed before sending.";
+const SUPPORTED_TEXT_EXTENSIONS = new Set([
   "txt",
   "md",
   "py",
@@ -21,6 +23,8 @@ const SUPPORTED_EXTENSIONS = new Set([
   "ini",
   "toml",
 ]);
+const SUPPORTED_IMAGE_EXTENSIONS = new Set(["png", "jpg", "jpeg", "webp"]);
+const SUPPORTED_IMAGE_MIME_TYPES = new Set(["image/png", "image/jpeg", "image/webp"]);
 
 const state = {
   conversations: [],
@@ -380,6 +384,51 @@ function persist() {
   }
 }
 
+function createAttachmentRecord(file, kind) {
+  return {
+    id: crypto.randomUUID(),
+    kind,
+    file,
+    name: file.name,
+    previewUrl: kind === "image" ? URL.createObjectURL(file) : "",
+  };
+}
+
+function resetAttachments() {
+  state.attachments.forEach(attachment => {
+    if (attachment.previewUrl) {
+      URL.revokeObjectURL(attachment.previewUrl);
+    }
+  });
+  state.attachments = [];
+  renderAttachments();
+}
+
+function getAttachmentKind(file) {
+  const extension = file.name.split(".").pop()?.toLowerCase() || "";
+  if (SUPPORTED_TEXT_EXTENSIONS.has(extension)) {
+    return "text";
+  }
+
+  if (SUPPORTED_IMAGE_MIME_TYPES.has(file.type) || SUPPORTED_IMAGE_EXTENSIONS.has(extension)) {
+    return "image";
+  }
+
+  return "";
+}
+
+function buildDefaultMessage(textAttachmentCount, imageAttachmentCount) {
+  if (textAttachmentCount && imageAttachmentCount) {
+    return "Review the attached files and images.";
+  }
+
+  if (imageAttachmentCount) {
+    return imageAttachmentCount === 1 ? "Describe the attached image." : "Describe the attached images.";
+  }
+
+  return "Summarize the attached files.";
+}
+
 function makeConversation() {
   const timestamp = Date.now();
   return {
@@ -404,9 +453,8 @@ function createConversation() {
   const conversation = makeConversation();
   state.conversations.unshift(conversation);
   state.activeId = conversation.id;
-  state.attachments = [];
+  resetAttachments();
   persist();
-  renderAttachments();
   renderConversationList();
   loadConversation(conversation.id);
   elements.promptInput.focus();
@@ -454,11 +502,10 @@ function clearHistory() {
   const conversation = makeConversation();
   state.conversations = [conversation];
   state.activeId = conversation.id;
-  state.attachments = [];
+  resetAttachments();
   elements.searchInput.value = "";
   elements.promptInput.value = "";
   autoResize(elements.promptInput);
-  renderAttachments();
   persist();
   renderConversationList();
   loadConversation(conversation.id);
@@ -764,19 +811,24 @@ function handleFiles(fileList) {
   const additions = [];
 
   Array.from(fileList).forEach(file => {
-    const extension = file.name.split(".").pop()?.toLowerCase() || "";
-    if (!SUPPORTED_EXTENSIONS.has(extension)) {
-      setHelperCopy(`Skipped ${file.name}. Only text-based files are supported.`);
+    const kind = getAttachmentKind(file);
+    if (!kind) {
+      setHelperCopy(`Skipped ${file.name}. Only supported text files and images are allowed.`);
       return;
     }
 
-    if (file.size > MAX_FILE_SIZE_BYTES) {
-      setHelperCopy(`Skipped ${file.name}. Keep attachments under ${Math.round(MAX_FILE_SIZE_BYTES / 1000)} KB.`);
+    if (kind === "text" && file.size > MAX_TEXT_FILE_SIZE_BYTES) {
+      setHelperCopy(`Skipped ${file.name}. Keep text files under ${Math.round(MAX_TEXT_FILE_SIZE_BYTES / 1000)} KB.`);
       return;
     }
 
-    if (!state.attachments.some(existing => existing.name === file.name)) {
-      additions.push(file);
+    if (kind === "image" && file.size > MAX_IMAGE_SIZE_BYTES) {
+      setHelperCopy(`Skipped ${file.name}. Keep images under ${Math.round(MAX_IMAGE_SIZE_BYTES / 1_000_000)} MB.`);
+      return;
+    }
+
+    if (!state.attachments.some(existing => existing.name === file.name && existing.kind === kind)) {
+      additions.push(createAttachmentRecord(file, kind));
     }
   });
 
@@ -791,11 +843,12 @@ function handleFiles(fileList) {
 
 function renderAttachments() {
   elements.attachmentStrip.innerHTML = state.attachments
-    .map(file => {
+    .map(attachment => {
       return `
-        <span class="attachment-chip">
-          ${escapeHtml(file.name)}
-          <button type="button" data-remove="${escapeHtml(file.name)}" aria-label="Remove ${escapeHtml(file.name)}">x</button>
+        <span class="attachment-chip ${attachment.kind === "image" ? "attachment-chip--image" : ""}">
+          ${attachment.previewUrl ? `<img class="attachment-preview" src="${attachment.previewUrl}" alt="">` : ""}
+          <span>${escapeHtml(attachment.name)}</span>
+          <button type="button" data-remove="${attachment.id}" aria-label="Remove ${escapeHtml(attachment.name)}">x</button>
         </span>
       `;
     })
@@ -803,10 +856,14 @@ function renderAttachments() {
 
   elements.attachmentStrip.querySelectorAll("[data-remove]").forEach(button => {
     button.addEventListener("click", () => {
-      const name = button.dataset.remove;
-      state.attachments = state.attachments.filter(file => file.name !== name);
+      const id = button.dataset.remove;
+      const removed = state.attachments.find(attachment => attachment.id === id);
+      if (removed?.previewUrl) {
+        URL.revokeObjectURL(removed.previewUrl);
+      }
+      state.attachments = state.attachments.filter(attachment => attachment.id !== id);
       renderAttachments();
-      setHelperCopy("Text attachments only. Large chats are trimmed before sending.");
+      setHelperCopy(DEFAULT_HELPER_COPY);
     });
   });
 }
@@ -827,15 +884,28 @@ async function sendMessage() {
   }
 
   let attachmentContext = "";
-  const attachmentNames = state.attachments.map(file => file.name);
+  let imagePayloads = [];
+  const attachmentNames = state.attachments.map(attachment => attachment.name);
+  const textAttachments = state.attachments.filter(attachment => attachment.kind === "text");
+  const imageAttachments = state.attachments.filter(attachment => attachment.kind === "image");
 
-  if (state.attachments.length) {
-    attachmentContext = await Promise.all(state.attachments.map(readTextAttachment)).then(chunks => chunks.join("\n\n"));
+  try {
+    if (textAttachments.length) {
+      attachmentContext = await Promise.all(textAttachments.map(readTextAttachment)).then(chunks => chunks.join("\n\n"));
+    }
+    if (imageAttachments.length) {
+      imagePayloads = await Promise.all(imageAttachments.map(readImageAttachment));
+    }
+  } catch (error) {
+    setHelperCopy(error.message || "Failed to read attachments.");
+    return;
   }
+
+  const resolvedText = rawText || buildDefaultMessage(textAttachments.length, imageAttachments.length);
 
   const userMessage = {
     role: "user",
-    text: rawText || "Summarize the attached files.",
+    text: resolvedText,
     files: attachmentNames,
     time: Date.now(),
   };
@@ -848,8 +918,7 @@ async function sendMessage() {
   }
 
   persist();
-  state.attachments = [];
-  renderAttachments();
+  resetAttachments();
   elements.promptInput.value = "";
   autoResize(elements.promptInput);
   loadConversation(conversation.id);
@@ -859,7 +928,7 @@ async function sendMessage() {
 
   try {
     const payload = {
-      prompt: buildPrompt(conversation, attachmentContext, userMessage.text),
+      messages: buildRequestMessages(conversation, attachmentContext, userMessage.text, imagePayloads),
     };
 
     const response = await fetch(`${API_BASE}/generate`, {
@@ -905,6 +974,7 @@ async function sendMessage() {
     setStatus("offline");
     setHelperCopy(error.message || "The request failed.");
   } finally {
+    resetAttachments();
     typingCard.remove();
     setBusy(false);
     elements.promptInput.focus();
@@ -964,28 +1034,63 @@ async function parseApiJson(response) {
   }
 }
 
-async function readTextAttachment(file) {
-  const text = await file.text();
-  return `File: ${file.name}\n\`\`\`\n${text}\n\`\`\``;
+async function readTextAttachment(attachment) {
+  const text = await attachment.file.text();
+  return `File: ${attachment.name}\n\`\`\`\n${text}\n\`\`\``;
 }
 
-function buildPrompt(conversation, attachmentContext, currentMessage) {
-  const recentMessages = conversation.messages.slice(-MAX_CONTEXT_MESSAGES - 1, -1);
-  const history = recentMessages
-    .map(message => {
-      const speaker = message.role === "assistant" ? "Assistant" : "User";
-      return `${speaker}: ${message.text}`;
-    })
-    .join("\n\n");
+async function readImageAttachment(attachment) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
 
-  const sections = [
-    "You are a helpful local AI assistant running in a browser-based chat app.",
-    history ? `Conversation history:\n\n${history}` : "",
-    attachmentContext ? `Attached file context:\n\n${attachmentContext}` : "",
-    `Latest user message:\n${currentMessage}`,
+    reader.onload = () => {
+      const result = String(reader.result || "");
+      const [, encoded] = result.split(",", 2);
+      if (!encoded) {
+        reject(new Error(`Could not encode ${attachment.name}.`));
+        return;
+      }
+      resolve(encoded);
+    };
+
+    reader.onerror = () => {
+      reject(new Error(`Could not read ${attachment.name}.`));
+    };
+
+    reader.readAsDataURL(attachment.file);
+  });
+}
+
+function buildRequestMessages(conversation, attachmentContext, currentMessage, images) {
+  const recentMessages = conversation.messages.slice(-MAX_CONTEXT_MESSAGES - 1, -1);
+  const messages = [
+    {
+      role: "system",
+      content: "You are a helpful local AI assistant running in a browser-based chat app.",
+    },
+    ...recentMessages.map(message => ({
+      role: message.role,
+      content: message.text,
+    })),
   ];
 
-  return sections.filter(Boolean).join("\n\n");
+  const latestSections = [];
+  if (attachmentContext) {
+    latestSections.push(`Attached file context:\n\n${attachmentContext}`);
+  }
+  latestSections.push(currentMessage);
+
+  const latestMessage = {
+    role: "user",
+    content: latestSections.join("\n\n"),
+  };
+  if (images.length) {
+    latestMessage.images = images;
+  }
+
+  messages.push(latestMessage);
+
+  return messages;
 }
 
 function buildConversationTitle(text) {

@@ -64,7 +64,7 @@
       </section>
 
       <section class="sidebar-section sidebar-note">
-        <p>Supports text-based attachments only: code, markdown, JSON, CSV, HTML, CSS, and config files.</p>
+        <p>Supports text files and images: code, markdown, JSON, CSV, HTML, CSS, config files, PNG, JPG, and WEBP.</p>
         <button
           class="settings-launch"
           id="settingsToggleBtn"
@@ -137,7 +137,7 @@
             <div class="empty-mark" id="emptyMark">G</div>
             <h3>Start a local conversation</h3>
             <p>
-              Ask a question, paste a bug, or attach a text file for local context. Your chat history stays in the browser.
+              Ask a question, paste a bug, or attach text files and images for local context. Your chat history stays in the browser.
             </p>
             <div class="suggestion-grid">
               <button class="suggestion-card" data-suggestion="Explain how transformers work in simple terms" type="button">
@@ -163,7 +163,7 @@
         <footer class="composer-panel">
           <div class="context-row">
             <span class="context-pill" id="contextPill">0 messages in context</span>
-            <span class="helper-copy" id="helperCopy">Text attachments only. Large chats are trimmed before sending.</span>
+            <span class="helper-copy" id="helperCopy">Text files and images only. Large chats are trimmed before sending.</span>
           </div>
 
           <div class="attachment-strip" id="attachmentStrip"></div>
@@ -176,7 +176,7 @@
               id="fileInput"
               type="file"
               multiple
-              accept=".txt,.md,.py,.js,.ts,.tsx,.json,.csv,.xml,.html,.css,.yml,.yaml,.ini,.toml"
+              accept=".txt,.md,.py,.js,.ts,.tsx,.json,.csv,.xml,.html,.css,.yml,.yaml,.ini,.toml,.png,.jpg,.jpeg,.webp"
             >
             <textarea
               id="promptInput"

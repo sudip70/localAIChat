@@ -9,14 +9,20 @@ from pydantic import BaseModel, Field
 
 BASE_DIR = Path(__file__).resolve().parent
 STATIC_DIR = BASE_DIR / "static"
-OLLAMA_URL = "http://localhost:11434/api/generate"
+OLLAMA_CHAT_URL = "http://localhost:11434/api/chat"
 OLLAMA_TAGS_URL = "http://localhost:11434/api/tags"
 OLLAMA_MODEL = "gemma4:latest"
 OLLAMA_TIMEOUT_SECONDS = 90
 
 
+class ChatMessage(BaseModel):
+    role: str = Field(..., min_length=1, max_length=20)
+    content: str = Field(..., min_length=1, max_length=500000)
+    images: list[str] = Field(default_factory=list, max_length=6)
+
+
 class GenerateRequest(BaseModel):
-    prompt: str = Field(..., min_length=1, max_length=50000)
+    messages: list[ChatMessage] = Field(..., min_length=1, max_length=32)
 
 
 app = FastAPI(
@@ -56,10 +62,10 @@ def health() -> dict[str, str]:
 def generate(payload: GenerateRequest) -> dict[str, object]:
     try:
         response = requests.post(
-            OLLAMA_URL,
+            OLLAMA_CHAT_URL,
             json={
                 "model": OLLAMA_MODEL,
-                "prompt": payload.prompt,
+                "messages": [message.model_dump(exclude_none=True) for message in payload.messages],
                 "stream": False,
             },
             timeout=OLLAMA_TIMEOUT_SECONDS,
@@ -94,7 +100,8 @@ def generate(payload: GenerateRequest) -> dict[str, object]:
             detail="Ollama returned a non-JSON response.",
         ) from exc
 
-    reply = data.get("response", "").strip()
+    message = data.get("message", {})
+    reply = message.get("content", "").strip() if isinstance(message, dict) else ""
     if not reply:
         raise HTTPException(
             status_code=502,

@@ -943,6 +943,7 @@ kbd {
   display: flex;
   flex-wrap: wrap;
   gap: 0.42rem;
+  align-items: center;
 }
 
 .attachment-chip button {
@@ -954,6 +955,26 @@ kbd {
 
 .attachment-chip button:hover {
   color: var(--danger);
+}
+
+.attachment-chip--image {
+  padding-left: 0.34rem;
+}
+
+.attachment-chip--image span {
+  max-width: 10rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.attachment-preview {
+  width: 1.45rem;
+  height: 1.45rem;
+  border-radius: 0.45rem;
+  object-fit: cover;
+  border: 1px solid var(--border);
+  flex-shrink: 0;
 }
 
 .composer {

@@ -13,7 +13,7 @@ This project pairs a small FastAPI backend with a clean vanilla frontend. It is 
 - `Clear` for the active chat and `Clear history` for all saved chats
 - Light and dark mode toggle
 - Health/status badge for the local model
-- Text attachment support for code and structured text files
+- Text and image attachment support for code, structured text files, and common image formats
 - Markdown-style rendering for assistant responses
 - Fixed viewport layout with internal scrolling for long chat history
 - JSON `POST` API instead of query-string prompt submission
@@ -74,6 +74,6 @@ uvicorn app:app --reload
 
 ## Important notes
 
-- This app supports text-based attachments only. Images and PDFs are intentionally excluded.
+- This app supports text files and common images such as PNG, JPG, JPEG, and WEBP. PDFs are still excluded.
 - The UI model name is cosmetic. The actual model used by the backend is defined in `app.py` as `gemma4:latest`.
 - Responses are non-streaming right now, so the UI waits for the full Ollama reply before rendering it.
