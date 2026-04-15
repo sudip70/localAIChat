@@ -845,7 +845,9 @@ button {
 .message-copy ul,
 .message-copy ol,
 .message-copy pre,
-.message-copy blockquote {
+.message-copy blockquote,
+.message-copy hr,
+.message-copy .table-wrap {
   margin: 0 0 0.75rem;
 }
 
@@ -855,9 +857,18 @@ button {
 
 .message-copy h1,
 .message-copy h2,
-.message-copy h3 {
+.message-copy h3,
+.message-copy h4,
+.message-copy h5,
+.message-copy h6 {
   margin: 0.8rem 0 0.38rem;
   line-height: 1.3;
+}
+
+.message-copy h4,
+.message-copy h5,
+.message-copy h6 {
+  font-size: 1em;
 }
 
 .message-copy ul,
@@ -901,8 +912,45 @@ kbd {
   color: var(--text-muted);
 }
 
+.message-copy hr {
+  border: none;
+  border-top: 1px solid var(--border);
+}
+
 .message-copy a {
   color: var(--accent-strong);
+}
+
+.message-copy .table-wrap {
+  overflow-x: auto;
+}
+
+.message-copy table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 32rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  background: var(--surface-subtle);
+}
+
+.message-copy th,
+.message-copy td {
+  padding: 0.6rem 0.75rem;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+  vertical-align: top;
+}
+
+.message-copy th {
+  background: var(--surface-soft);
+  color: var(--text);
+  font-weight: 700;
+}
+
+.message-copy tbody tr:last-child td {
+  border-bottom: none;
 }
 
 .typing-card {
@@ -1005,6 +1053,12 @@ kbd {
   background: var(--icon-surface);
   color: var(--accent-strong);
   font-size: 1rem;
+}
+
+.icon-button.is-disabled,
+.composer textarea:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
 }
 
 .send-button {

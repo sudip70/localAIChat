@@ -31,6 +31,7 @@ const state = {
   activeId: null,
   attachments: [],
   busy: false,
+  pendingConversationId: null,
   modelDisplayName: "Gemma",
   statusMode: "checking",
 };
@@ -48,6 +49,7 @@ const elements = {
   emptyMark: document.getElementById("emptyMark"),
   emptyState: document.getElementById("emptyState"),
   fileInput: document.getElementById("fileInput"),
+  fileTrigger: document.querySelector('label[for="fileInput"]'),
   helperCopy: document.getElementById("helperCopy"),
   messageSurface: document.getElementById("messageSurface"),
   modelDisplayLabel: document.getElementById("modelDisplayLabel"),
@@ -293,6 +295,31 @@ function warnBusy(actionLabel) {
   setHelperCopy(`Wait for the current response to finish before ${actionLabel}.`);
 }
 
+function isPendingConversation(id) {
+  return Boolean(id) && state.pendingConversationId === id;
+}
+
+function syncUiAvailability() {
+  const activeConversation = getActiveConversation();
+  const activeIsPending = activeConversation ? isPendingConversation(activeConversation.id) : false;
+
+  elements.sendBtn.disabled = state.busy;
+  elements.promptInput.disabled = state.busy;
+  elements.fileInput.disabled = state.busy;
+  elements.clearBtn.disabled = activeIsPending;
+  elements.clearHistoryBtn.disabled = state.busy;
+
+  if (elements.fileTrigger) {
+    elements.fileTrigger.classList.toggle("is-disabled", state.busy);
+    elements.fileTrigger.setAttribute("aria-disabled", state.busy ? "true" : "false");
+    if (state.busy) {
+      elements.fileTrigger.setAttribute("tabindex", "-1");
+    } else {
+      elements.fileTrigger.removeAttribute("tabindex");
+    }
+  }
+}
+
 function saveModelSettings() {
   state.modelDisplayName = normalizeModelDisplayName(elements.modelNameInput.value);
 
@@ -445,11 +472,6 @@ function getActiveConversation() {
 }
 
 function createConversation() {
-  if (state.busy) {
-    warnBusy("starting a new conversation");
-    return;
-  }
-
   const conversation = makeConversation();
   state.conversations.unshift(conversation);
   state.activeId = conversation.id;
@@ -475,13 +497,13 @@ function commitConversationTitle() {
 }
 
 function clearConversation() {
-  if (state.busy) {
-    warnBusy("clearing this conversation");
+  const conversation = getActiveConversation();
+  if (!conversation) {
     return;
   }
 
-  const conversation = getActiveConversation();
-  if (!conversation) {
+  if (isPendingConversation(conversation.id)) {
+    warnBusy("clearing this conversation");
     return;
   }
 
@@ -494,7 +516,7 @@ function clearConversation() {
 }
 
 function clearHistory() {
-  if (state.busy) {
+  if (state.pendingConversationId) {
     warnBusy("clearing history");
     return;
   }
@@ -514,7 +536,7 @@ function clearHistory() {
 }
 
 function deleteConversation(id) {
-  if (state.busy) {
+  if (isPendingConversation(id)) {
     warnBusy("deleting a conversation");
     return;
   }
@@ -545,6 +567,7 @@ function loadConversation(id) {
   }
   elements.chatTitleInput.value = conversation.title;
   updateContextPill(conversation.messages.length);
+  syncUiAvailability();
   renderConversationList(elements.searchInput.value);
   renderMessages(conversation);
 }
@@ -598,24 +621,18 @@ function renderConversationList(filter = "") {
           </button>
           <button class="conversation-delete" type="button" aria-label="Delete conversation">x</button>
         </div>
-        <div class="conversation-meta">${timeAgo(conversation.updatedAt)}</div>
+        <div class="conversation-meta">${isPendingConversation(conversation.id) ? "Thinking…" : timeAgo(conversation.updatedAt)}</div>
       `;
 
       const openButton = item.querySelector(".conversation-open");
-      openButton.disabled = state.busy;
       openButton.addEventListener("click", () => {
-        if (state.busy) {
-          warnBusy("switching conversations");
-          return;
-        }
-
         loadConversation(conversation.id);
       });
 
       const deleteButton = item.querySelector(".conversation-delete");
-      deleteButton.disabled = state.busy;
+      deleteButton.disabled = isPendingConversation(conversation.id);
       deleteButton.addEventListener("click", () => {
-        if (state.busy) {
+        if (isPendingConversation(conversation.id)) {
           warnBusy("deleting a conversation");
           return;
         }
@@ -650,6 +667,10 @@ function renderMessages(conversation) {
   conversation.messages.forEach(message => {
     stack.appendChild(buildMessageCard(message));
   });
+
+  if (isPendingConversation(conversation.id)) {
+    stack.appendChild(buildTypingCard());
+  }
 
   elements.messageSurface.innerHTML = "";
   elements.messageSurface.appendChild(stack);
@@ -700,6 +721,7 @@ function renderMarkdown(source) {
   while (index < lines.length) {
     const line = lines[index];
     const fenceMatch = line.match(/^```([\w-]*)/);
+    const headingMatch = line.match(/^(#{1,6})\s+(.*)$/);
 
     if (fenceMatch) {
       const language = fenceMatch[1] || "code";
@@ -716,20 +738,29 @@ function renderMarkdown(source) {
       continue;
     }
 
-    if (/^### /.test(line)) {
-      blocks.push(`<h3>${formatInline(line.slice(4))}</h3>`);
+    if (/^\s*(?:\*\s*){3,}\s*$/.test(line) || /^\s*(?:-\s*){3,}\s*$/.test(line) || /^\s*(?:_\s*){3,}\s*$/.test(line) || line.trim() === "--") {
+      blocks.push("<hr>");
       index += 1;
       continue;
     }
 
-    if (/^## /.test(line)) {
-      blocks.push(`<h2>${formatInline(line.slice(3))}</h2>`);
-      index += 1;
+    if (isTableLine(line) && index + 1 < lines.length && isTableDividerLine(lines[index + 1])) {
+      const headerCells = parseTableRow(line);
+      const bodyRows = [];
+      index += 2;
+
+      while (index < lines.length && isTableLine(lines[index])) {
+        bodyRows.push(parseTableRow(lines[index]));
+        index += 1;
+      }
+
+      blocks.push(renderTable(headerCells, bodyRows));
       continue;
     }
 
-    if (/^# /.test(line)) {
-      blocks.push(`<h1>${formatInline(line.slice(2))}</h1>`);
+    if (headingMatch) {
+      const level = Math.min(headingMatch[1].length, 6);
+      blocks.push(`<h${level}>${formatInline(headingMatch[2])}</h${level}>`);
       index += 1;
       continue;
     }
@@ -769,7 +800,12 @@ function renderMarkdown(source) {
     while (
       index < lines.length &&
       lines[index].trim() &&
-      !/^(```|#{1,3} |> |[-*] |\d+\. )/.test(lines[index])
+      !/^(```|#{1,6} |> |[-*] |\d+\. )/.test(lines[index]) &&
+      !/^\s*(?:\*\s*){3,}\s*$/.test(lines[index]) &&
+      !/^\s*(?:-\s*){3,}\s*$/.test(lines[index]) &&
+      !/^\s*(?:_\s*){3,}\s*$/.test(lines[index]) &&
+      lines[index].trim() !== "--" &&
+      !(isTableLine(lines[index]) && index + 1 < lines.length && isTableDividerLine(lines[index + 1]))
     ) {
       paragraph.push(formatInline(lines[index]));
       index += 1;
@@ -783,6 +819,11 @@ function renderMarkdown(source) {
 
 function formatInline(value) {
   let output = escapeHtml(value);
+  output = output.replace(/\$\\to\$/g, "&rarr;");
+  output = output.replace(/\$\\rightarrow\$/g, "&rarr;");
+  output = output.replace(/\$\\leftarrow\$/g, "&larr;");
+  output = output.replace(/\$\\Rightarrow\$/g, "&rArr;");
+  output = output.replace(/\$\\Leftarrow\$/g, "&lArr;");
   output = output.replace(/\*\*\*(.+?)\*\*\*/g, "<strong><em>$1</em></strong>");
   output = output.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
   output = output.replace(/__(.+?)__/g, "<strong>$1</strong>");
@@ -793,6 +834,43 @@ function formatInline(value) {
     return safeHref ? `<a href="${safeHref}" target="_blank" rel="noreferrer">${label}</a>` : label;
   });
   return output;
+}
+
+function isTableLine(line) {
+  const trimmed = line.trim();
+  return trimmed.startsWith("|") && trimmed.endsWith("|") && trimmed.length > 2;
+}
+
+function isTableDividerLine(line) {
+  if (!isTableLine(line)) {
+    return false;
+  }
+
+  return parseTableRow(line).every(cell => /^:?-{3,}:?$/.test(cell));
+}
+
+function parseTableRow(line) {
+  return line
+    .trim()
+    .slice(1, -1)
+    .split("|")
+    .map(cell => cell.trim());
+}
+
+function renderTable(headerCells, bodyRows) {
+  const headerHtml = headerCells.map(cell => `<th>${formatInline(cell)}</th>`).join("");
+  const bodyHtml = bodyRows
+    .map(row => `<tr>${row.map(cell => `<td>${formatInline(cell)}</td>`).join("")}</tr>`)
+    .join("");
+
+  return `
+    <div class="table-wrap">
+      <table>
+        <thead><tr>${headerHtml}</tr></thead>
+        <tbody>${bodyHtml}</tbody>
+      </table>
+    </div>
+  `;
 }
 
 function sanitizeUrl(url) {
@@ -923,8 +1001,9 @@ async function sendMessage() {
   autoResize(elements.promptInput);
   loadConversation(conversation.id);
 
-  const typingCard = appendTypingCard();
+  state.pendingConversationId = conversation.id;
   setBusy(true);
+  refreshConversationViews(conversation.id);
 
   try {
     const payload = {
@@ -958,7 +1037,6 @@ async function sendMessage() {
     conversation.messages.push(assistantMessage);
     conversation.updatedAt = Date.now();
     persist();
-    loadConversation(conversation.id);
     setStatus("online");
     setHelperCopy("Response generated successfully.");
   } catch (error) {
@@ -970,26 +1048,16 @@ async function sendMessage() {
     });
     conversation.updatedAt = Date.now();
     persist();
-    loadConversation(conversation.id);
     setStatus("offline");
     setHelperCopy(error.message || "The request failed.");
   } finally {
-    resetAttachments();
-    typingCard.remove();
+    state.pendingConversationId = null;
     setBusy(false);
-    elements.promptInput.focus();
+    refreshConversationViews(conversation.id, { focusPrompt: true });
   }
 }
 
-function appendTypingCard() {
-  const existingStack = elements.messageSurface.querySelector(".message-stack");
-  const stack = existingStack || document.createElement("div");
-  if (!existingStack) {
-    stack.className = "message-stack";
-    elements.messageSurface.innerHTML = "";
-    elements.messageSurface.appendChild(stack);
-  }
-
+function buildTypingCard() {
   const card = document.createElement("article");
   card.className = "message-card message-card--assistant";
   card.innerHTML = `
@@ -1007,9 +1075,26 @@ function appendTypingCard() {
     </div>
   `;
 
-  stack.appendChild(card);
-  elements.messageSurface.scrollTop = elements.messageSurface.scrollHeight;
   return card;
+}
+
+function refreshConversationViews(updatedConversationId, options = {}) {
+  const { focusPrompt = false } = options;
+  renderConversationList(elements.searchInput.value);
+  syncUiAvailability();
+
+  const activeConversation = getActiveConversation();
+  if (!activeConversation) {
+    return;
+  }
+
+  elements.chatTitleInput.value = activeConversation.title;
+  updateContextPill(activeConversation.messages.length);
+  renderMessages(activeConversation);
+
+  if (focusPrompt && state.activeId === updatedConversationId) {
+    elements.promptInput.focus();
+  }
 }
 
 async function parseApiJson(response) {
@@ -1099,10 +1184,7 @@ function buildConversationTitle(text) {
 
 function setBusy(busy) {
   state.busy = busy;
-  elements.sendBtn.disabled = busy;
-  elements.newChatBtn.disabled = busy;
-  elements.clearBtn.disabled = busy;
-  elements.clearHistoryBtn.disabled = busy;
+  syncUiAvailability();
   renderConversationList(elements.searchInput.value);
 }
 

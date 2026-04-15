@@ -1,3 +1,8 @@
+import os
+import socket
+import subprocess
+import time
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 import requests
@@ -9,10 +14,94 @@ from pydantic import BaseModel, Field
 
 BASE_DIR = Path(__file__).resolve().parent
 STATIC_DIR = BASE_DIR / "static"
-OLLAMA_CHAT_URL = "http://localhost:11434/api/chat"
-OLLAMA_TAGS_URL = "http://localhost:11434/api/tags"
-OLLAMA_MODEL = "gemma4:latest"
+OLLAMA_MODEL = os.getenv("GEMMA_OLLAMA_MODEL", "gemma4:latest")
 OLLAMA_TIMEOUT_SECONDS = 90
+OLLAMA_STARTUP_TIMEOUT_SECONDS = 20
+
+
+def pick_ollama_host() -> str:
+    configured_host = os.getenv("GEMMA_OLLAMA_HOST", "").strip()
+    if configured_host:
+        return configured_host
+
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.bind(("127.0.0.1", 0))
+        return f"127.0.0.1:{sock.getsockname()[1]}"
+
+
+def build_ollama_base_url(host: str) -> str:
+    return f"http://{host}"
+
+
+def wait_for_ollama(tags_url: str, process: subprocess.Popen[str]) -> None:
+    deadline = time.monotonic() + OLLAMA_STARTUP_TIMEOUT_SECONDS
+    last_error = ""
+
+    while time.monotonic() < deadline:
+        if process.poll() is not None:
+            raise RuntimeError("Ollama exited before it finished starting.")
+
+        try:
+            response = requests.get(tags_url, timeout=1)
+            response.raise_for_status()
+            return
+        except requests.RequestException as exc:
+            last_error = str(exc)
+            time.sleep(0.25)
+
+    stop_ollama_process(process)
+    raise RuntimeError(
+        f"Timed out waiting for Ollama to start at {tags_url}. {last_error}".strip()
+    )
+
+
+def start_managed_ollama(host: str) -> subprocess.Popen[str]:
+    env = os.environ.copy()
+    env["OLLAMA_HOST"] = host
+
+    process = subprocess.Popen(
+        ["ollama", "serve"],
+        env=env,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    wait_for_ollama(f"{build_ollama_base_url(host)}/api/tags", process)
+    return process
+
+
+def stop_ollama_process(process: subprocess.Popen[str] | None) -> None:
+    if process is None or process.poll() is not None:
+        return
+
+    process.terminate()
+    try:
+        process.wait(timeout=5)
+    except subprocess.TimeoutExpired:
+        process.kill()
+        process.wait(timeout=5)
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    ollama_host = pick_ollama_host()
+    ollama_base_url = build_ollama_base_url(ollama_host)
+
+    app.state.ollama_base_url = ollama_base_url
+    app.state.ollama_chat_url = f"{ollama_base_url}/api/chat"
+    app.state.ollama_tags_url = f"{ollama_base_url}/api/tags"
+    app.state.ollama_process = None
+
+    try:
+        app.state.ollama_process = start_managed_ollama(ollama_host)
+    except FileNotFoundError as exc:
+        raise RuntimeError(
+            "Could not find the `ollama` executable. Install Ollama first, then start the app again."
+        ) from exc
+
+    try:
+        yield
+    finally:
+        stop_ollama_process(app.state.ollama_process)
 
 
 class ChatMessage(BaseModel):
@@ -29,6 +118,7 @@ app = FastAPI(
     title="Gemma Local AI",
     description="A local-first chat interface for Ollama + Gemma.",
     version="1.0.0",
+    lifespan=lifespan,
 )
 
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
@@ -42,7 +132,7 @@ def index() -> FileResponse:
 @app.get("/api/health")
 def health() -> dict[str, str]:
     try:
-        response = requests.get(OLLAMA_TAGS_URL, timeout=3)
+        response = requests.get(app.state.ollama_tags_url, timeout=3)
         response.raise_for_status()
         data = response.json()
     except (requests.RequestException, ValueError):
@@ -62,7 +152,7 @@ def health() -> dict[str, str]:
 def generate(payload: GenerateRequest) -> dict[str, object]:
     try:
         response = requests.post(
-            OLLAMA_CHAT_URL,
+            app.state.ollama_chat_url,
             json={
                 "model": OLLAMA_MODEL,
                 "messages": [message.model_dump(exclude_none=True) for message in payload.messages],
@@ -79,7 +169,7 @@ def generate(payload: GenerateRequest) -> dict[str, object]:
     except requests.ConnectionError as exc:
         raise HTTPException(
             status_code=503,
-            detail="Cannot reach Ollama at http://localhost:11434. Start Ollama and load the model first.",
+            detail=f"Cannot reach the managed Ollama server at {app.state.ollama_base_url}. Restart the app.",
         ) from exc
     except requests.HTTPError as exc:
         raise HTTPException(
