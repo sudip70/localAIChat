@@ -847,7 +847,8 @@ button {
 .message-copy pre,
 .message-copy blockquote,
 .message-copy hr,
-.message-copy .table-wrap {
+.message-copy .table-wrap,
+.message-copy .math-block {
   margin: 0 0 0.75rem;
 }
 
@@ -919,6 +920,82 @@ kbd {
 
 .message-copy a {
   color: var(--accent-strong);
+}
+
+.message-copy .math-inline,
+.message-copy .math-block {
+  font-family: "Times New Roman", "STIX Two Text", serif;
+  word-break: normal;
+}
+
+.message-copy .math-inline {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.04em;
+}
+
+.message-copy .math-block {
+  display: block;
+  overflow-x: auto;
+  padding: 0.4rem 0.1rem;
+  text-align: center;
+  font-size: 1.05em;
+}
+
+.message-copy .math-frac {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  vertical-align: middle;
+  line-height: 1.1;
+  margin: 0 0.12em;
+}
+
+.message-copy .math-frac-top {
+  border-bottom: 1px solid currentColor;
+  padding: 0 0.2em 0.05em;
+}
+
+.message-copy .math-frac-bottom {
+  padding: 0.05em 0.2em 0;
+}
+
+.message-copy .math-sqrt {
+  display: inline-flex;
+  align-items: flex-start;
+}
+
+.message-copy .math-radical {
+  font-size: 1.15em;
+  line-height: 1;
+  padding-right: 0.06em;
+}
+
+.message-copy .math-radicand {
+  border-top: 1px solid currentColor;
+  padding: 0.06em 0.14em 0 0.08em;
+}
+
+.message-copy .math-text {
+  font-family: "Manrope", sans-serif;
+  font-size: 0.95em;
+}
+
+.message-copy .math-mathbf {
+  font-weight: 700;
+}
+
+.message-copy .math-mathit {
+  font-style: italic;
+}
+
+.message-copy .math-mathrm {
+  font-style: normal;
+}
+
+.message-copy .math-mathbb {
+  font-weight: 700;
+  letter-spacing: 0.04em;
 }
 
 .message-copy .table-wrap {

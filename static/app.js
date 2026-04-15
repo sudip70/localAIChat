@@ -714,22 +714,28 @@ function renderPlainText(text) {
 }
 
 function renderMarkdown(source) {
-  const lines = source.split("\n");
+  const lines = normalizeMathDelimiters(source).split("\n");
   const blocks = [];
   let index = 0;
 
   while (index < lines.length) {
     const line = lines[index];
-    const fenceMatch = line.match(/^```([\w-]*)/);
-    const headingMatch = line.match(/^(#{1,6})\s+(.*)$/);
+    const trimmedLine = line.trimStart();
+    const fenceMatch = trimmedLine.match(/^```(?:\s*([\w-]+))?\s*$/);
+    const headingMatch = trimmedLine.match(/^(#{1,6})\s+(.*)$/);
 
     if (fenceMatch) {
       const language = fenceMatch[1] || "code";
       const codeLines = [];
+      const indentation = line.slice(0, line.length - trimmedLine.length);
       index += 1;
 
-      while (index < lines.length && !lines[index].startsWith("```")) {
-        codeLines.push(escapeHtml(lines[index]));
+      while (index < lines.length && !lines[index].trimStart().startsWith("```")) {
+        const currentLine = lines[index];
+        const normalizedLine = indentation && currentLine.startsWith(indentation)
+          ? currentLine.slice(indentation.length)
+          : currentLine;
+        codeLines.push(escapeHtml(normalizedLine));
         index += 1;
       }
 
@@ -741,6 +747,42 @@ function renderMarkdown(source) {
     if (/^\s*(?:\*\s*){3,}\s*$/.test(line) || /^\s*(?:-\s*){3,}\s*$/.test(line) || /^\s*(?:_\s*){3,}\s*$/.test(line) || line.trim() === "--") {
       blocks.push("<hr>");
       index += 1;
+      continue;
+    }
+
+    if (line.trim().startsWith("$$")) {
+      const mathLines = [];
+      const firstLine = line.trim();
+
+      if (firstLine.length > 4 && firstLine.endsWith("$$")) {
+        blocks.push(renderMathBlock(firstLine.slice(2, -2).trim()));
+        index += 1;
+        continue;
+      }
+
+      const initialContent = firstLine.slice(2).trim();
+      if (initialContent) {
+        mathLines.push(initialContent);
+      }
+
+      index += 1;
+      while (index < lines.length) {
+        const currentLine = lines[index];
+        const trimmedCurrent = currentLine.trim();
+        if (trimmedCurrent.endsWith("$$")) {
+          const closingContent = trimmedCurrent.slice(0, -2).trim();
+          if (closingContent) {
+            mathLines.push(closingContent);
+          }
+          index += 1;
+          break;
+        }
+
+        mathLines.push(currentLine);
+        index += 1;
+      }
+
+      blocks.push(renderMathBlock(mathLines.join(" ").trim()));
       continue;
     }
 
@@ -765,26 +807,26 @@ function renderMarkdown(source) {
       continue;
     }
 
-    if (/^> /.test(line)) {
-      blocks.push(`<blockquote>${formatInline(line.slice(2))}</blockquote>`);
+    if (/^> /.test(trimmedLine)) {
+      blocks.push(`<blockquote>${formatInline(trimmedLine.slice(2))}</blockquote>`);
       index += 1;
       continue;
     }
 
-    if (/^[-*] /.test(line)) {
+    if (/^[-*] /.test(trimmedLine)) {
       const listItems = [];
-      while (index < lines.length && /^[-*] /.test(lines[index])) {
-        listItems.push(`<li>${formatInline(lines[index].slice(2))}</li>`);
+      while (index < lines.length && /^[-*] /.test(lines[index].trimStart())) {
+        listItems.push(`<li>${formatInline(lines[index].trimStart().slice(2))}</li>`);
         index += 1;
       }
       blocks.push(`<ul>${listItems.join("")}</ul>`);
       continue;
     }
 
-    if (/^\d+\. /.test(line)) {
+    if (/^\d+\. /.test(trimmedLine)) {
       const listItems = [];
-      while (index < lines.length && /^\d+\. /.test(lines[index])) {
-        listItems.push(`<li>${formatInline(lines[index].replace(/^\d+\. /, ""))}</li>`);
+      while (index < lines.length && /^\d+\. /.test(lines[index].trimStart())) {
+        listItems.push(`<li>${formatInline(lines[index].trimStart().replace(/^\d+\. /, ""))}</li>`);
         index += 1;
       }
       blocks.push(`<ol>${listItems.join("")}</ol>`);
@@ -800,11 +842,12 @@ function renderMarkdown(source) {
     while (
       index < lines.length &&
       lines[index].trim() &&
-      !/^(```|#{1,6} |> |[-*] |\d+\. )/.test(lines[index]) &&
+      !/^(```|#{1,6} |> |[-*] |\d+\. )/.test(lines[index].trimStart()) &&
       !/^\s*(?:\*\s*){3,}\s*$/.test(lines[index]) &&
       !/^\s*(?:-\s*){3,}\s*$/.test(lines[index]) &&
       !/^\s*(?:_\s*){3,}\s*$/.test(lines[index]) &&
       lines[index].trim() !== "--" &&
+      !lines[index].trim().startsWith("$$") &&
       !(isTableLine(lines[index]) && index + 1 < lines.length && isTableDividerLine(lines[index + 1]))
     ) {
       paragraph.push(formatInline(lines[index]));
@@ -819,11 +862,12 @@ function renderMarkdown(source) {
 
 function formatInline(value) {
   let output = escapeHtml(value);
-  output = output.replace(/\$\\to\$/g, "&rarr;");
-  output = output.replace(/\$\\rightarrow\$/g, "&rarr;");
-  output = output.replace(/\$\\leftarrow\$/g, "&larr;");
-  output = output.replace(/\$\\Rightarrow\$/g, "&rArr;");
-  output = output.replace(/\$\\Leftarrow\$/g, "&lArr;");
+  const mathPlaceholders = [];
+  output = output.replace(/\$([^$\n]+?)\$/g, (_, expression) => {
+    const placeholder = `@@MATH_${mathPlaceholders.length}@@`;
+    mathPlaceholders.push(renderMathInline(expression));
+    return placeholder;
+  });
   output = output.replace(/\*\*\*(.+?)\*\*\*/g, "<strong><em>$1</em></strong>");
   output = output.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
   output = output.replace(/__(.+?)__/g, "<strong>$1</strong>");
@@ -833,7 +877,184 @@ function formatInline(value) {
     const safeHref = sanitizeUrl(href);
     return safeHref ? `<a href="${safeHref}" target="_blank" rel="noreferrer">${label}</a>` : label;
   });
+  mathPlaceholders.forEach((markup, idx) => {
+    output = output.replace(`@@MATH_${idx}@@`, markup);
+  });
   return output;
+}
+
+function renderMathInline(expression) {
+  return `<span class="math-inline">${renderMathExpression(expression)}</span>`;
+}
+
+function renderMathBlock(expression) {
+  return `<div class="math-block">${renderMathExpression(expression)}</div>`;
+}
+
+function renderMathExpression(source) {
+  const normalized = source
+    .replace(/\\left/g, "")
+    .replace(/\\right/g, "")
+    .trim();
+  return parseMathSegment(normalized).html;
+}
+
+function normalizeMathDelimiters(source) {
+  return source
+    .replace(/\\\[((?:.|\n)*?)\\\]/g, (_, expression) => `$$${expression}$$`)
+    .replace(/\\\(((?:.|\n)*?)\\\)/g, (_, expression) => `$${expression}$`)
+    .replace(/\\\$\\\$([\s\S]+?)\\\$\\\$/g, (_, expression) => `$$${expression}$$`)
+    .replace(/\\\$([^$\n]+?)\\\$/g, (_, expression) => `$${expression}$`);
+}
+
+function parseMathSegment(source, start = 0, stopChar = "") {
+  const tokens = [];
+  let index = start;
+
+  while (index < source.length) {
+    const char = source[index];
+
+    if (stopChar && char === stopChar) {
+      return { html: tokens.join(""), nextIndex: index + 1 };
+    }
+
+    if (char === "\\") {
+      const atom = parseMathAtom(source, index);
+      tokens.push(atom.html);
+      index = atom.nextIndex;
+      continue;
+    }
+
+    if (char === "{") {
+      const group = parseMathSegment(source, index + 1, "}");
+      tokens.push(group.html);
+      index = group.nextIndex;
+      continue;
+    }
+
+    if (char === "^" || char === "_") {
+      const script = parseMathArgument(source, index + 1);
+      if (tokens.length) {
+        const base = tokens.pop();
+        tokens.push(char === "^" ? `${base}<sup>${script.html}</sup>` : `${base}<sub>${script.html}</sub>`);
+      } else {
+        tokens.push(char === "^" ? `<sup>${script.html}</sup>` : `<sub>${script.html}</sub>`);
+      }
+      index = script.nextIndex;
+      continue;
+    }
+
+    tokens.push(escapeHtml(char));
+    index += 1;
+  }
+
+  return { html: tokens.join(""), nextIndex: index };
+}
+
+function parseMathArgument(source, startIndex) {
+  return parseMathAtom(source, startIndex);
+}
+
+function parseMathAtom(source, startIndex) {
+  let index = startIndex;
+  while (index < source.length && /\s/.test(source[index])) {
+    index += 1;
+  }
+
+  if (index >= source.length) {
+    return { html: "", nextIndex: index };
+  }
+
+  if (source[index] === "{") {
+    return parseMathSegment(source, index + 1, "}");
+  }
+
+  if (source[index] === "\\") {
+    const commandMatch = source.slice(index + 1).match(/^[A-Za-z]+/);
+    if (!commandMatch) {
+      if (index + 1 < source.length) {
+        return { html: escapeHtml(source[index + 1]), nextIndex: index + 2 };
+      }
+      return { html: "\\", nextIndex: index + 1 };
+    }
+
+    const command = commandMatch[0];
+    index += 1 + command.length;
+
+    if (command === "sqrt") {
+      const radicand = parseMathArgument(source, index);
+      return {
+        html: `<span class="math-sqrt"><span class="math-radical">√</span><span class="math-radicand">${radicand.html}</span></span>`,
+        nextIndex: radicand.nextIndex,
+      };
+    }
+
+    if (command === "frac") {
+      const numerator = parseMathArgument(source, index);
+      const denominator = parseMathArgument(source, numerator.nextIndex);
+      return {
+        html: `<span class="math-frac"><span class="math-frac-top">${numerator.html}</span><span class="math-frac-bottom">${denominator.html}</span></span>`,
+        nextIndex: denominator.nextIndex,
+      };
+    }
+
+    if (command === "text") {
+      const textContent = parseMathArgument(source, index);
+      return {
+        html: `<span class="math-text">${textContent.html}</span>`,
+        nextIndex: textContent.nextIndex,
+      };
+    }
+
+    if (command === "mathbf" || command === "mathrm" || command === "mathit" || command === "mathbb") {
+      const styledContent = parseMathArgument(source, index);
+      return {
+        html: `<span class="math-${command}">${styledContent.html}</span>`,
+        nextIndex: styledContent.nextIndex,
+      };
+    }
+
+    return { html: getMathCommandMarkup(command), nextIndex: index };
+  }
+
+  return { html: escapeHtml(source[index]), nextIndex: index + 1 };
+}
+
+function getMathCommandMarkup(command) {
+  const symbolMap = {
+    alpha: "α",
+    approx: "≈",
+    beta: "β",
+    cdot: "·",
+    cdots: "⋯",
+    delta: "δ",
+    dots: "…",
+    gamma: "γ",
+    ge: "≥",
+    geq: "≥",
+    infty: "∞",
+    lambda: "λ",
+    le: "≤",
+    leq: "≤",
+    leftarrow: "←",
+    mu: "μ",
+    ne: "≠",
+    neq: "≠",
+    omega: "ω",
+    phi: "φ",
+    pi: "π",
+    pm: "±",
+    rightarrow: "→",
+    sigma: "σ",
+    sqrt: "√",
+    theta: "θ",
+    times: "×",
+    to: "→",
+    Leftarrow: "⇐",
+    Rightarrow: "⇒",
+  };
+
+  return symbolMap[command] || escapeHtml(command);
 }
 
 function isTableLine(line) {

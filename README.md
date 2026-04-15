@@ -6,7 +6,7 @@ This project pairs a small FastAPI backend with a clean vanilla frontend. It is 
 
 **Demo:** 
 <p align="center">
-  <img src="local_demo.gif" width="600"/>
+  <img src="local_demo.gif" width="100%"/>
 </p>
 
 ## What it includes
