@@ -106,7 +106,8 @@ async def lifespan(app: FastAPI):
 
 class ChatMessage(BaseModel):
     role: str = Field(..., min_length=1, max_length=20)
-    content: str = Field(..., min_length=1, max_length=500000)
+    # FIX: allow empty content so image-only messages (no text, just images[]) are valid
+    content: str = Field(default="", max_length=500_000)
     images: list[str] = Field(default_factory=list, max_length=6)
 
 
@@ -145,7 +146,15 @@ def health() -> dict[str, str]:
         for model in models
     )
 
-    return {"status": "online" if has_model else "offline", "model": OLLAMA_MODEL}
+    if has_model:
+        return {"status": "online", "model": OLLAMA_MODEL}
+
+    # FIX: surface a pull hint so the user knows exactly what to run
+    return {
+        "status": "offline",
+        "model": OLLAMA_MODEL,
+        "hint": f"Model not found. Run: ollama pull {OLLAMA_MODEL}",
+    }
 
 
 @app.post("/api/generate")

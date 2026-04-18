@@ -572,6 +572,9 @@ function loadConversation(id) {
   renderMessages(conversation);
 }
 
+// FIX: SVG delete icon instead of bare 'x' character
+const DELETE_ICON_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="11" height="11" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>`;
+
 function renderConversationList(filter = "") {
   const query = filter.trim().toLowerCase();
   const filtered = state.conversations.filter(conversation => {
@@ -613,15 +616,19 @@ function renderConversationList(filter = "") {
     bucket.items.forEach(conversation => {
       const item = document.createElement("article");
       item.className = `conversation-item ${conversation.id === state.activeId ? "is-active" : ""}`;
+
+      const metaText = isPendingConversation(conversation.id)
+        ? "Thinking…"
+        : `${conversation.messages.length} msgs · ${timeAgo(conversation.updatedAt)}`;
+
       item.innerHTML = `
         <div class="conversation-item-head">
           <button class="conversation-open" type="button">
             <span class="conversation-title">${escapeHtml(conversation.title)}</span>
-            <span class="conversation-meta">${conversation.messages.length} messages</span>
+            <span class="conversation-meta">${metaText}</span>
           </button>
-          <button class="conversation-delete" type="button" aria-label="Delete conversation">x</button>
+          <button class="conversation-delete" type="button" aria-label="Delete conversation">${DELETE_ICON_SVG}</button>
         </div>
-        <div class="conversation-meta">${isPendingConversation(conversation.id) ? "Thinking…" : timeAgo(conversation.updatedAt)}</div>
       `;
 
       const openButton = item.querySelector(".conversation-open");
@@ -649,6 +656,7 @@ function renderConversationList(filter = "") {
   if (!hasContent) {
     const empty = document.createElement("p");
     empty.className = "conversation-meta";
+    empty.style.cssText = "padding: 8px 13px; color: var(--sb-tx2); font-size: 11px;";
     empty.textContent = "No conversations match that search.";
     elements.conversationList.appendChild(empty);
   }
@@ -712,6 +720,8 @@ function renderMessageFiles(files) {
 function renderPlainText(text) {
   return escapeHtml(text).replace(/\n/g, "<br>");
 }
+
+// ─── Markdown Renderer ────────────────────────────────────────
 
 function renderMarkdown(source) {
   const lines = normalizeMathDelimiters(source).split("\n");
@@ -813,23 +823,18 @@ function renderMarkdown(source) {
       continue;
     }
 
+    // FIX: nested list support – detect by original line indentation
     if (/^[-*] /.test(trimmedLine)) {
-      const listItems = [];
-      while (index < lines.length && /^[-*] /.test(lines[index].trimStart())) {
-        listItems.push(`<li>${formatInline(lines[index].trimStart().slice(2))}</li>`);
-        index += 1;
-      }
-      blocks.push(`<ul>${listItems.join("")}</ul>`);
+      const result = parseList(lines, index, false, lineIndent(line));
+      blocks.push(result.html);
+      index = result.nextIndex;
       continue;
     }
 
     if (/^\d+\. /.test(trimmedLine)) {
-      const listItems = [];
-      while (index < lines.length && /^\d+\. /.test(lines[index].trimStart())) {
-        listItems.push(`<li>${formatInline(lines[index].trimStart().replace(/^\d+\. /, ""))}</li>`);
-        index += 1;
-      }
-      blocks.push(`<ol>${listItems.join("")}</ol>`);
+      const result = parseList(lines, index, true, lineIndent(line));
+      blocks.push(result.html);
+      index = result.nextIndex;
       continue;
     }
 
@@ -858,6 +863,61 @@ function renderMarkdown(source) {
   }
 
   return blocks.join("");
+}
+
+// FIX: recursive list parser that handles nested lists by indentation
+function lineIndent(line) {
+  const match = line.match(/^(\s*)/);
+  return match ? match[1].length : 0;
+}
+
+function parseList(lines, startIndex, ordered, baseIndent) {
+  const items = [];
+  let index = startIndex;
+
+  while (index < lines.length) {
+    const line = lines[index];
+    const indent = lineIndent(line);
+    const trimmed = line.trimStart();
+    const isUnordered = /^[-*] /.test(trimmed);
+    const isOrdered = /^\d+\. /.test(trimmed);
+
+    // Stop if not a list item at all
+    if (!isUnordered && !isOrdered) break;
+
+    // Stop if indented less than our base (belongs to a parent)
+    if (indent < baseIndent) break;
+
+    if (indent === baseIndent) {
+      // Same-level item
+      const content = isOrdered
+        ? trimmed.replace(/^\d+\. /, "")
+        : trimmed.slice(2);
+
+      index += 1;
+
+      // Check whether the next line starts a nested list
+      let nestedHtml = "";
+      if (index < lines.length) {
+        const nextIndent = lineIndent(lines[index]);
+        const nextTrimmed = lines[index].trimStart();
+        const nextIsList = /^[-*] /.test(nextTrimmed) || /^\d+\. /.test(nextTrimmed);
+        if (nextIsList && nextIndent > baseIndent) {
+          const nested = parseList(lines, index, /^\d+\. /.test(nextTrimmed), nextIndent);
+          nestedHtml = nested.html;
+          index = nested.nextIndex;
+        }
+      }
+
+      items.push(`<li>${formatInline(content)}${nestedHtml}</li>`);
+    } else {
+      // Deeper-indented item encountered without entering a sub-list — skip
+      index += 1;
+    }
+  }
+
+  const tag = ordered ? "ol" : "ul";
+  return { html: `<${tag}>${items.join("")}</${tag}>`, nextIndex: index };
 }
 
 function formatInline(value) {
@@ -1147,7 +1207,7 @@ function renderAttachments() {
         <span class="attachment-chip ${attachment.kind === "image" ? "attachment-chip--image" : ""}">
           ${attachment.previewUrl ? `<img class="attachment-preview" src="${attachment.previewUrl}" alt="">` : ""}
           <span>${escapeHtml(attachment.name)}</span>
-          <button type="button" data-remove="${attachment.id}" aria-label="Remove ${escapeHtml(attachment.name)}">x</button>
+          <button type="button" data-remove="${attachment.id}" aria-label="Remove ${escapeHtml(attachment.name)}">${DELETE_ICON_SVG}</button>
         </span>
       `;
     })
@@ -1367,12 +1427,13 @@ async function readImageAttachment(attachment) {
   });
 }
 
+// FIX: system prompt uses the configured model display name
 function buildRequestMessages(conversation, attachmentContext, currentMessage, images) {
   const recentMessages = conversation.messages.slice(-MAX_CONTEXT_MESSAGES - 1, -1);
   const messages = [
     {
       role: "system",
-      content: "You are a helpful local AI assistant running in a browser-based chat app.",
+      content: `You are ${getAssistantName()}, a helpful local AI assistant running through Ollama in a browser-based chat app.`,
     },
     ...recentMessages.map(message => ({
       role: message.role,
@@ -1425,11 +1486,19 @@ function setStatus(mode) {
   elements.statusPill.classList.toggle("is-offline", mode === "offline");
 }
 
+// FIX: surface a pull hint when the model is missing from Ollama
 async function pingHealth() {
   try {
     const response = await fetch(`${API_BASE}/health`, { method: "GET" });
     const data = await parseApiJson(response);
-    setStatus(data.status === "online" ? "online" : "offline");
+    if (data.status === "online") {
+      setStatus("online");
+    } else {
+      setStatus("offline");
+      if (data.hint) {
+        setHelperCopy(data.hint);
+      }
+    }
     return;
   } catch {
     // Ignore and mark offline below.
@@ -1440,9 +1509,9 @@ async function pingHealth() {
 
 function autoResize(textarea) {
   textarea.style.height = "auto";
-  const nextHeight = Math.min(textarea.scrollHeight, 240);
-  textarea.style.height = `${Math.max(nextHeight, 72)}px`;
-  textarea.style.overflowY = textarea.scrollHeight > 240 ? "auto" : "hidden";
+  const nextHeight = Math.min(textarea.scrollHeight, 220);
+  textarea.style.height = `${Math.max(nextHeight, 66)}px`;
+  textarea.style.overflowY = textarea.scrollHeight > 220 ? "auto" : "hidden";
 }
 
 function timeAgo(timestamp) {
