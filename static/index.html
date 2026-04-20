@@ -13,6 +13,8 @@
       const savedTheme = localStorage.getItem("gemma_theme");
       if (savedTheme === "dark" || savedTheme === "light") {
         document.documentElement.dataset.theme = savedTheme;
+      } else if (window.matchMedia("(prefers-color-scheme: dark)").matches) {
+        document.documentElement.dataset.theme = "dark";
       }
     } catch (error) {
       // Ignore storage access failures and fall back to the default theme.
@@ -24,7 +26,7 @@
     href="https://fonts.googleapis.com/css2?family=Figtree:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
     rel="stylesheet"
   >
-  <link rel="stylesheet" href="/static/styles.css?v=20260418-0002">
+  <link rel="stylesheet" href="/static/styles.css?v=20260419-0007">
 </head>
 <body>
   <div class="app-shell" id="appShell">
@@ -229,6 +231,6 @@
     </div>
   </div>
 
-  <script src="/static/app.js?v=20260418-0001" defer></script>
+  <script src="/static/app.js?v=20260419-0008" defer></script>
 </body>
 </html>

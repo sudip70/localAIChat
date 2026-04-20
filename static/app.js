@@ -6,6 +6,7 @@ const MAX_CONTEXT_MESSAGES = 12;
 const MAX_TEXT_FILE_SIZE_BYTES = 200_000;
 const MAX_IMAGE_SIZE_BYTES = 5_000_000;
 const DEFAULT_HELPER_COPY = "Text files and images only. Large chats are trimmed before sending.";
+const SYSTEM_THEME_MEDIA = window.matchMedia("(prefers-color-scheme: dark)");
 const SUPPORTED_TEXT_EXTENSIONS = new Set([
   "txt",
   "md",
@@ -34,6 +35,7 @@ const state = {
   pendingConversationId: null,
   modelDisplayName: "Gemma",
   statusMode: "checking",
+  healthHint: "",
 };
 
 const elements = {
@@ -181,6 +183,7 @@ function bindEvents() {
       toggleSidebar(false);
     }
   });
+  bindSystemThemeListener();
   window.addEventListener("resize", syncViewportLayout);
 }
 
@@ -362,7 +365,7 @@ function getStoredTheme() {
 }
 
 function getSystemTheme() {
-  return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+  return SYSTEM_THEME_MEDIA.matches ? "dark" : "light";
 }
 
 function toggleTheme() {
@@ -384,6 +387,25 @@ function applyTheme(theme, persistTheme) {
     localStorage.setItem(THEME_STORAGE_KEY, theme);
   } catch {
     // Ignore storage failures and keep the in-memory theme.
+  }
+}
+
+function handleSystemThemeChange(event) {
+  if (getStoredTheme()) {
+    return;
+  }
+
+  applyTheme(event.matches ? "dark" : "light", false);
+}
+
+function bindSystemThemeListener() {
+  if (typeof SYSTEM_THEME_MEDIA.addEventListener === "function") {
+    SYSTEM_THEME_MEDIA.addEventListener("change", handleSystemThemeChange);
+    return;
+  }
+
+  if (typeof SYSTEM_THEME_MEDIA.addListener === "function") {
+    SYSTEM_THEME_MEDIA.addListener(handleSystemThemeChange);
   }
 }
 
@@ -577,9 +599,9 @@ const DELETE_ICON_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentCol
 
 function renderConversationList(filter = "") {
   const query = filter.trim().toLowerCase();
-  const filtered = state.conversations.filter(conversation => {
-    return !query || conversation.title.toLowerCase().includes(query);
-  });
+  const filtered = state.conversations
+    .filter(conversation => !query || conversation.title.toLowerCase().includes(query))
+    .sort((left, right) => right.updatedAt - left.updatedAt);
 
   elements.conversationCount.textContent = `${filtered.length} ${filtered.length === 1 ? "chat" : "chats"}`;
   elements.conversationList.innerHTML = "";
@@ -1478,6 +1500,19 @@ function setHelperCopy(message) {
   elements.helperCopy.textContent = message;
 }
 
+function setHealthHint(hint) {
+  state.healthHint = hint;
+  setHelperCopy(hint);
+}
+
+function clearHealthHint() {
+  if (state.healthHint && elements.helperCopy.textContent === state.healthHint) {
+    setHelperCopy(DEFAULT_HELPER_COPY);
+  }
+
+  state.healthHint = "";
+}
+
 function setStatus(mode) {
   state.statusMode = mode;
 
@@ -1492,11 +1527,14 @@ async function pingHealth() {
     const response = await fetch(`${API_BASE}/health`, { method: "GET" });
     const data = await parseApiJson(response);
     if (data.status === "online") {
+      clearHealthHint();
       setStatus("online");
     } else {
       setStatus("offline");
       if (data.hint) {
-        setHelperCopy(data.hint);
+        setHealthHint(data.hint);
+      } else {
+        clearHealthHint();
       }
     }
     return;
@@ -1504,6 +1542,7 @@ async function pingHealth() {
     // Ignore and mark offline below.
   }
 
+  clearHealthHint();
   setStatus("offline");
 }
 

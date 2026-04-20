@@ -3,45 +3,55 @@
  * Aesthetic: professional, minimal, clean
  */
 
+/* ─── Font Imports (loaded from CSS so HTML file version doesn't matter) ── */
+@import url('https://fonts.googleapis.com/css2?family=Figtree:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+
 /* ─── Design Tokens ──────────────────────────────────────────── */
 :root {
   --font: 'Figtree', system-ui, sans-serif;
   --mono: 'JetBrains Mono', monospace;
 
-  /* Sidebar – always dark regardless of theme */
-  --sb-bg:      #0E0E0F;
-  --sb-bd:      rgba(255, 255, 255, 0.062);
-  --sb-tx:      #DCDCD8;
-  --sb-tx2:     #6C6C68;
-  --sb-tx3:     #434340;
-  --sb-hov:     rgba(255, 255, 255, 0.048);
-  --sb-act:     rgba(255, 255, 255, 0.086);
-  --sb-mark:    rgba(255, 255, 255, 0.09);
-  --sb-mark-bd: rgba(255, 255, 255, 0.15);
-  --sb-accent:  #5b9af5;
-  --sb-in-bg:   rgba(255, 255, 255, 0.068);
-  --sb-in-bd:   rgba(255, 255, 255, 0.11);
-  --sb-in-foc:  rgba(255, 255, 255, 0.15);
+  /* Sidebar – light theme */
+  --sb-bg:      #ECEFF3;
+  --sb-bd:      rgba(26, 30, 36, 0.08);
+  --sb-tx:      #171A1F;
+  --sb-tx2:     #656C76;
+  --sb-tx3:     #9CA3AE;
+  --sb-hov:     rgba(26, 30, 36, 0.04);
+  --sb-act:     rgba(37, 99, 235, 0.10);
+  --sb-mark:    rgba(37, 99, 235, 0.10);
+  --sb-mark-bd: rgba(37, 99, 235, 0.16);
+  --sb-accent:  #2563EB;
+  --sb-in-bg:   #F8FAFC;
+  --sb-in-bg-focus: #FFFFFF;
+  --sb-in-bd:   rgba(26, 30, 36, 0.10);
+  --sb-in-foc:  rgba(37, 99, 235, 0.22);
+  --sb-btn-bg:  #F8FAFC;
+  --sb-btn-bd:  rgba(26, 30, 36, 0.10);
+  --sb-btn-hov: #FFFFFF;
 
   /* Main area – light */
-  --bg:          #F1F1F0;
-  --surface:     #FFFFFF;
-  --surface-2:   #F7F7F6;
-  --surface-3:   #EEEEED;
-  --surface-hov: #F4F4F3;
-  --surface-act: #EEF2FF;
-  --border:      #E2E2DF;
-  --border-str:  #CECECB;
+  --bg:          #E6E9ED;
+  --surface:     #FBFCFD;
+  --surface-2:   #F3F5F7;
+  --surface-3:   #E8EBEF;
+  --surface-hov: #EEF1F4;
+  --surface-act: #EAF1FF;
+  --border:      #D5DAE1;
+  --border-str:  #C3CAD3;
+  --shadow-card: 0 1px 3px rgba(15, 23, 42, 0.06), 0 12px 32px rgba(15, 23, 42, 0.08);
+  --shadow-popover: 0 16px 44px rgba(15, 23, 42, 0.14);
 
   /* Text */
-  --tx:   #111110;
-  --tx2:  #666664;
-  --tx3:  #A4A4A1;
+  --tx:   #171A1F;
+  --tx2:  #616873;
+  --tx3:  #99A1AC;
 
   /* Accent */
   --ac:      #2563EB;
   --ac-h:    #1D4ED8;
-  --ac-soft: rgba(37, 99, 235, 0.08);
+  --ac-soft: rgba(37, 99, 235, 0.10);
+  --ac-line: rgba(37, 99, 235, 0.24);
   --ac-fg:   #FFFFFF;
 
   /* Functional */
@@ -57,6 +67,23 @@
 }
 
 [data-theme="dark"] {
+  --sb-bg:          #0E0E0F;
+  --sb-bd:          rgba(255, 255, 255, 0.062);
+  --sb-tx:          #DCDCD8;
+  --sb-tx2:         #6C6C68;
+  --sb-tx3:         #434340;
+  --sb-hov:         rgba(255, 255, 255, 0.048);
+  --sb-act:         rgba(255, 255, 255, 0.086);
+  --sb-mark:        rgba(255, 255, 255, 0.09);
+  --sb-mark-bd:     rgba(255, 255, 255, 0.15);
+  --sb-accent:      #5B9AF5;
+  --sb-in-bg:       rgba(255, 255, 255, 0.068);
+  --sb-in-bg-focus: rgba(255, 255, 255, 0.09);
+  --sb-in-bd:       rgba(255, 255, 255, 0.11);
+  --sb-in-foc:      rgba(255, 255, 255, 0.15);
+  --sb-btn-bg:      rgba(255, 255, 255, 0.09);
+  --sb-btn-bd:      rgba(255, 255, 255, 0.12);
+  --sb-btn-hov:     rgba(255, 255, 255, 0.13);
   --bg:          #0B0B0C;
   --surface:     #111113;
   --surface-2:   #17171A;
@@ -71,20 +98,24 @@
   --ac:          #4E8DF7;
   --ac-h:        #6BA3F9;
   --ac-soft:     rgba(78, 141, 247, 0.1);
+  --ac-line:     rgba(78, 141, 247, 0.25);
+  --shadow-card: 0 1px 3px rgba(0,0,0,0.3), 0 4px 16px rgba(0,0,0,0.2);
+  --shadow-popover: 0 8px 30px rgba(0, 0, 0, 0.24);
 }
 
 /* ─── Reset ─────────────────────────────────────────────────── */
 *, *::before, *::after { box-sizing: border-box; }
 
-html, body {
+html,
+body {
   margin: 0;
   height: 100%;
   min-height: 100%;
   overflow: hidden;
+  background: var(--bg);
 }
 
 body {
-  background: var(--bg);
   color: var(--tx);
   font-family: var(--font);
   font-size: 12px;
@@ -106,6 +137,7 @@ button { cursor: pointer; }
   min-height: 100dvh;
   overflow: hidden;
   transition: grid-template-columns 180ms ease;
+  background: var(--bg);
 }
 
 .app-shell.is-sidebar-collapsed {
@@ -263,9 +295,9 @@ button { cursor: pointer; }
 .primary-button {
   width: 100%;
   padding: 7px 13px;
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  border: 1px solid var(--sb-btn-bd);
   border-radius: var(--r2);
-  background: rgba(255, 255, 255, 0.09);
+  background: var(--sb-btn-bg);
   color: var(--sb-tx);
   font-size: 11.5px;
   font-weight: 600;
@@ -274,7 +306,7 @@ button { cursor: pointer; }
 }
 
 .primary-button:hover {
-  background: rgba(255, 255, 255, 0.13);
+  background: var(--sb-btn-hov);
 }
 
 .primary-button:disabled {
@@ -333,7 +365,7 @@ button { cursor: pointer; }
 .search-input:focus {
   outline: none;
   border-color: var(--sb-in-foc);
-  background: rgba(255, 255, 255, 0.09);
+  background: var(--sb-in-bg-focus);
 }
 
 /* ─── Conversation List ──────────────────────────────────────── */
@@ -575,7 +607,7 @@ button { cursor: pointer; }
   border: 1px solid var(--border-str);
   border-radius: var(--r4);
   background: var(--surface);
-  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.14);
+  box-shadow: var(--shadow-popover);
 }
 
 .settings-popover-head {
@@ -674,7 +706,7 @@ button { cursor: pointer; }
 
 /* ─── Icon Toggles ───────────────────────────────────────────── */
 .icon-toggle {
-  display: grid;
+  display: inline-grid;
   place-items: center;
   width: 30px;
   height: 30px;
@@ -683,7 +715,6 @@ button { cursor: pointer; }
   border-radius: var(--r2);
   background: var(--surface);
   color: var(--tx2);
-  flex-shrink: 0;
   transition: background 130ms, border-color 130ms, color 130ms;
 }
 
@@ -701,7 +732,6 @@ button { cursor: pointer; }
   stroke-width: 1.7;
   stroke-linecap: round;
   stroke-linejoin: round;
-  pointer-events: none;
 }
 
 .icon-toggle .icon-sun  { display: none; }
@@ -725,10 +755,11 @@ button { cursor: pointer; }
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
   gap: 10px;
-  padding: 10px;
+  padding: 10px 14px 14px;
   min-width: 0;
   min-height: 0;
   overflow: hidden;
+  background: var(--bg);
 }
 
 /* ─── Utility Row ────────────────────────────────────────────── */
@@ -744,7 +775,6 @@ button { cursor: pointer; }
   display: flex;
   align-items: center;
   gap: 6px;
-  position: relative;
 }
 
 .mobile-menu-toggle {
@@ -766,12 +796,6 @@ button { cursor: pointer; }
   font-size: 10px;
   font-weight: 500;
   letter-spacing: 0.03em;
-  pointer-events: none;
-}
-
-#themeToggle {
-  position: relative;
-  z-index: 1;
 }
 
 .status-pill::before {
@@ -799,9 +823,10 @@ button { cursor: pointer; }
 .chat-shell {
   display: grid;
   grid-template-rows: auto minmax(0, 1fr) auto;
-  border: 1px solid var(--border);
-  border-radius: var(--r4);
+  border: 1px solid var(--border-str);
+  border-radius: 14px;
   background: var(--surface);
+  box-shadow: var(--shadow-card);
   min-height: 0;
   overflow: hidden;
 }
@@ -809,7 +834,8 @@ button { cursor: pointer; }
 /* ─── Topbar ─────────────────────────────────────────────────── */
 .topbar {
   padding: 10px 13px;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--border-str);
+  background: var(--surface);
 }
 
 .title-block {
@@ -866,8 +892,8 @@ button { cursor: pointer; }
 .message-surface {
   min-height: 0;
   overflow-y: auto;
-  padding: 12px 12px 0;
-  background: var(--surface-2);
+  padding: 8px 10px 0;
+  background: var(--surface);
 }
 
 .message-surface::-webkit-scrollbar { width: 4px; }
@@ -884,7 +910,7 @@ button { cursor: pointer; }
   min-height: 100%;
   text-align: center;
   padding: 2rem 1rem 3rem;
-  background: var(--surface-2);
+  background: var(--surface);
 }
 
 .empty-state h3 {
@@ -946,44 +972,55 @@ button { cursor: pointer; }
 .message-stack {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 4px;
   padding-bottom: 12px;
 }
 
 /* ─── Message Card ───────────────────────────────────────────── */
 .message-card {
   display: grid;
-  grid-template-columns: 28px minmax(0, 1fr);
-  gap: 10px;
-  padding: 10px 11px;
-  border-radius: var(--r3);
-  border: 1px solid var(--border);
-  background: var(--surface);
+  grid-template-columns: 26px minmax(0, 1fr);
+  gap: 9px;
+  padding: 8px 10px;
+  border-radius: var(--r2);
+  border: 1px solid transparent;
+  background: transparent;
+}
+
+.message-card:hover {
+  background: var(--surface-2);
+  border-color: var(--border);
 }
 
 .message-card--assistant {
   background: var(--surface-2);
+  border-color: var(--border);
   border-left: 2px solid var(--ac);
-  padding-left: 10px;
+  padding-left: 9px;
+}
+
+.message-card--assistant:hover {
+  background: var(--surface-3);
 }
 
 .message-avatar {
   display: grid;
   place-items: center;
-  width: 28px;
-  height: 28px;
-  border-radius: var(--r2);
+  width: 26px;
+  height: 26px;
+  border-radius: var(--r1);
   border: 1px solid var(--border);
   background: var(--surface-3);
   color: var(--tx2);
   font-family: var(--mono);
-  font-size: 9px;
+  font-size: 8.5px;
   font-weight: 600;
+  flex-shrink: 0;
 }
 
 .message-card--assistant .message-avatar {
   color: var(--ac);
-  border-color: var(--ac);
+  border-color: var(--ac-line);
   background: var(--ac-soft);
 }
 
@@ -1216,7 +1253,7 @@ button { cursor: pointer; }
   flex-direction: column;
   gap: 7px;
   padding: 9px 12px;
-  border-top: 1px solid var(--border);
+  border-top: 1px solid var(--border-str);
   background: var(--surface);
   /* Override card styles */
   border-radius: 0;
