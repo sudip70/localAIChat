@@ -33,6 +33,7 @@ const state = {
   attachments: [],
   busy: false,
   pendingConversationId: null,
+  requestController: null,
   modelDisplayName: "Gemma",
   statusMode: "checking",
   healthHint: "",
@@ -95,7 +96,7 @@ function bindEvents() {
   elements.clearBtn.addEventListener("click", clearConversation);
   elements.searchInput.addEventListener("input", () => renderConversationList(elements.searchInput.value));
   elements.fileInput.addEventListener("change", event => handleFiles(event.target.files));
-  elements.sendBtn.addEventListener("click", sendMessage);
+  elements.sendBtn.addEventListener("click", handleComposerAction);
   elements.themeToggle.addEventListener("click", toggleTheme);
   elements.sidebarToggleBtn.addEventListener("click", event => {
     event.preventDefault();
@@ -302,11 +303,37 @@ function isPendingConversation(id) {
   return Boolean(id) && state.pendingConversationId === id;
 }
 
+function handleComposerAction() {
+  const activeConversation = getActiveConversation();
+  if (activeConversation && isPendingConversation(activeConversation.id)) {
+    stopPendingResponse();
+    return;
+  }
+
+  sendMessage();
+}
+
+function stopPendingResponse() {
+  if (!state.requestController || !state.pendingConversationId) {
+    return;
+  }
+
+  state.requestController.abort();
+}
+
 function syncUiAvailability() {
   const activeConversation = getActiveConversation();
   const activeIsPending = activeConversation ? isPendingConversation(activeConversation.id) : false;
+  const pendingElsewhere = Boolean(state.pendingConversationId) && !activeIsPending;
 
-  elements.sendBtn.disabled = state.busy;
+  elements.sendBtn.disabled = !activeConversation || pendingElsewhere;
+  elements.sendBtn.textContent = activeIsPending ? "Stop" : "Send";
+  elements.sendBtn.classList.toggle("is-stop", activeIsPending);
+  elements.sendBtn.setAttribute("aria-label", activeIsPending ? "Stop generating response" : "Send message");
+  elements.sendBtn.setAttribute(
+    "title",
+    pendingElsewhere ? "Sending is disabled while another conversation is generating." : activeIsPending ? "Stop generating response" : "Send message",
+  );
   elements.promptInput.disabled = state.busy;
   elements.fileInput.disabled = state.busy;
   elements.clearBtn.disabled = activeIsPending;
@@ -1305,6 +1332,8 @@ async function sendMessage() {
   loadConversation(conversation.id);
 
   state.pendingConversationId = conversation.id;
+  const requestController = new AbortController();
+  state.requestController = requestController;
   setBusy(true);
   refreshConversationViews(conversation.id);
 
@@ -1319,6 +1348,7 @@ async function sendMessage() {
         "Content-Type": "application/json",
       },
       body: JSON.stringify(payload),
+      signal: requestController.signal,
     });
 
     const data = await parseApiJson(response);
@@ -1343,6 +1373,11 @@ async function sendMessage() {
     setStatus("online");
     setHelperCopy("Response generated successfully.");
   } catch (error) {
+    if (error?.name === "AbortError") {
+      setHelperCopy("Response stopped.");
+      return;
+    }
+
     conversation.messages.push({
       role: "assistant",
       text: `Request failed.\n\n${error.message}\n\nStart the app with:\n\n\`\`\`bash\nuvicorn app:app --reload\n\`\`\``,
@@ -1354,6 +1389,9 @@ async function sendMessage() {
     setStatus("offline");
     setHelperCopy(error.message || "The request failed.");
   } finally {
+    if (state.requestController === requestController) {
+      state.requestController = null;
+    }
     state.pendingConversationId = null;
     setBusy(false);
     refreshConversationViews(conversation.id, { focusPrompt: true });

@@ -1000,7 +1000,8 @@ button { cursor: pointer; }
 }
 
 .message-card--assistant:hover {
-  background: var(--surface-3);
+  background: var(--surface);
+  border-color: var(--border-str);
 }
 
 .message-avatar {
@@ -1401,9 +1402,17 @@ button { cursor: pointer; }
   transition: background 130ms, transform 120ms;
 }
 
+.send-button.is-stop {
+  background: var(--dng);
+}
+
 .send-button:hover {
   background: var(--ac-h);
   transform: translateY(-0.5px);
+}
+
+.send-button.is-stop:hover {
+  background: #b91c1c;
 }
 
 .send-button:disabled {
